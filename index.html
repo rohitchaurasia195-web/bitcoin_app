@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7931a">
 <title>Bitcoin History</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root {
   --bg: #f5f6f8;
@@ -477,5 +479,5 @@ fetch("data/btc.json", { cache: "no-cache" })
     $("updated").textContent = "Could not load the data file";
   });
 </script>
-<script src="more.js"></script></body>
+<script src="more.js"></script><script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");</script></body>
 </html>
