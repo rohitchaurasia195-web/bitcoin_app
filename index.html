@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7931a">
+<title>Bitcoin History</title>
+<style>
+:root {
+  --bg: #f5f6f8;
+  --card: #ffffff;
+  --text: #16181d;
+  --muted: #6b7280;
+  --line: #e3e6eb;
+  --accent: #f7931a;
+  --up: #1f9d55;
+  --down: #d64545;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #191c22;
+    --text: #eef0f4;
+    --muted: #9aa3b2;
+    --line: #2a2f39;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  font-size: 15px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 14px calc(env(safe-area-inset-bottom, 0px) + 28px);
+}
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 16px; margin: 18px 0 8px; }
+.sub { color: var(--muted); font-size: 13px; margin: 2px 0 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 12px; }
+label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+select, input[type="date"] {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+}
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.hidden { display: none !important; }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+@media (min-width: 560px) { .metrics { grid-template-columns: 1fr 1fr 1fr; } }
+.metric { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.metric .k { color: var(--muted); font-size: 12px; }
+.metric .v { font-size: 19px; font-weight: 600; margin-top: 2px; }
+.metric .d { font-size: 12px; margin-top: 2px; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
+.tabs button {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+}
+.tabs button.active { background: var(--accent); border-color: var(--accent); color: #1a1205; font-weight: 600; }
+.checks { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; font-size: 14px; }
+.checks label { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; margin: 0; }
+.chartbox { position: relative; height: 340px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+th, td { text-align: right; padding: 7px 9px; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--muted); font-weight: 500; }
+.note { color: var(--muted); font-size: 13px; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bitcoin History</h1>
+  <p class="sub" id="updated">Loading data</p>
+
+  <div class="card">
+    <label for="period">Period</label>
+    <select id="period">
+      <option value="all">All</option>
+      <option value="1825">Last 5 years</option>
+      <option value="1095">Last 3 years</option>
+      <option value="365">Last 1 year</option>
+      <option value="182">Last 6 months</option>
+      <option value="91">Last 3 months</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div class="row hidden" id="customRow">
+      <div><label for="from">From</label><input type="date" id="from"></div>
+      <div><label for="to">To</label><input type="date" id="to"></div>
+    </div>
+  </div>
+
+  <div class="metrics" id="metrics"></div>
+
+  <div class="tabs" id="tabs">
+    <button data-tab="price" class="active">Price</button>
+    <button data-tab="cycles">Bull and Bear</button>
+    <button data-tab="spikes">Spikes</button>
+    <button data-tab="drawdown">Drawdown</button>
+    <button data-tab="halvings">Halvings</button>
+  </div>
+
+  <section id="tab-price" class="card">
+    <div class="checks">
+      <label><input type="checkbox" id="logScale" checked> Log scale</label>
+      <label><input type="checkbox" id="shade" checked> Colour bull and bear periods</label>
+    </div>
+    <div class="chartbox"><canvas id="priceChart"></canvas></div>
+  </section>
+
+  <section id="tab-cycles" class="card hidden">
+    <div class="row" style="margin-top:0">
+      <div>
+        <label for="cycleSize">Size of move</label>
+        <select id="cycleSize">
+          <option value="major_cycles">Major periods (50 percent rule)</option>
+          <option value="swings">Smaller swings (20 percent rule)</option>
+        </select>
+      </div>
+      <div>
+        <label for="cycleType">Type</label>
+        <select id="cycleType">
+          <option value="all">All</option>
+          <option value="bull">Bull</option>
+          <option value="bear">Bear</option>
+        </select>
+      </div>
+    </div>
+    <div class="metrics" id="cycleMetrics" style="margin-top:12px"></div>
+    <div class="scroll" id="cycleTable"></div>
+  </section>
+
+  <section id="tab-spikes" class="card hidden">
+    <div class="row" style="margin-top:0">
+      <div>
+        <label for="topN">How many days to show</label>
+        <select id="topN">
+          <option>10</option>
+          <option>20</option>
+          <option>50</option>
+        </select>
+      </div>
+      <div>
+        <label for="limit">Count moves bigger than</label>
+        <select id="limit">
+          <option value="5">5 percent</option>
+          <option value="10" selected>10 percent</option>
+          <option value="15">15 percent</option>
+          <option value="20">20 percent</option>
+        </select>
+      </div>
+    </div>
+    <div class="metrics" id="spikeMetrics" style="margin-top:12px"></div>
+    <h2>Biggest one day jumps</h2>
+    <div class="scroll" id="jumpTable"></div>
+    <h2>Biggest one day falls</h2>
+    <div class="scroll" id="fallTable"></div>
+  </section>
+
+  <section id="tab-drawdown" class="card hidden">
+    <p class="note">How far the price is below the highest price reached so far in the chosen period.</p>
+    <div class="chartbox"><canvas id="drawdownChart"></canvas></div>
+  </section>
+
+  <section id="tab-halvings" class="card hidden">
+    <p class="note">Price change after each halving. This table always shows all halvings. The period filter does not change it.</p>
+    <div class="scroll" id="halvingTable"></div>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const money = (n) => n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+const pct = (n, digits = 1) => (n > 0 ? "+" : "") + n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }) + "%";
+const tone = (n) => (n >= 0 ? "up" : "down");
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const store = { dates: [], close: [], change: [], data: null, tab: "price", priceChart: null, drawdownChart: null };
+
+function lowerBound(date) {
+  let lo = 0;
+  let hi = store.dates.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (store.dates[mid] < date) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function upperIndex(date) {
+  let lo = 0;
+  let hi = store.dates.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (store.dates[mid] <= date) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo - 1;
+}
+
+function shiftDays(date, days) {
+  const d = new Date(date + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function currentRange() {
+  const first = store.dates[0];
+  const last = store.dates[store.dates.length - 1];
+  const choice = $("period").value;
+  if (choice === "all") return [first, last];
+  if (choice === "custom") return [$("from").value || first, $("to").value || last];
+  const start = shiftDays(last, -Number(choice));
+  return [start < first ? first : start, last];
+}
+
+function metricCard(label, value, delta, deltaClass) {
+  const extra = delta ? `<div class="d ${deltaClass || ""}">${delta}</div>` : "";
+  return `<div class="metric"><div class="k">${label}</div><div class="v">${value}</div>${extra}</div>`;
+}
+
+function table(columns, rows) {
+  if (!rows.length) return `<p class="note">Nothing to show for this period.</p>`;
+  const head = columns.map((c) => `<th>${c.label}</th>`).join("");
+  const body = rows
+    .map((r) => "<tr>" + columns.map((c) => {
+      const raw = r[c.key];
+      const text = raw === null || raw === undefined ? "" : c.fmt ? c.fmt(raw) : raw;
+      const cls = c.tone && raw !== null && raw !== undefined ? ` class="${tone(raw)}"` : "";
+      return `<td${cls}>${text}</td>`;
+    }).join("") + "</tr>")
+    .join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+const shadePlugin = {
+  id: "shade",
+  beforeDatasetsDraw(chart) {
+    const bands = chart.$bands;
+    if (!bands || !bands.length) return;
+    const { ctx, chartArea, scales } = chart;
+    ctx.save();
+    bands.forEach((b) => {
+      const x0 = scales.x.getPixelForValue(b.from);
+      const x1 = scales.x.getPixelForValue(b.to);
+      ctx.fillStyle = b.type === "bull" ? "rgba(31,157,85,0.16)" : "rgba(214,69,69,0.16)";
+      ctx.fillRect(x0, chartArea.top, x1 - x0, chartArea.bottom - chartArea.top);
+    });
+    ctx.restore();
+  },
+};
+
+function baseOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: { legend: { display: false } },
+    elements: { point: { radius: 0, hoverRadius: 3 } },
+    scales: {
+      x: { ticks: { maxTicksLimit: 6, maxRotation: 0, autoSkip: true, color: css("--muted") }, grid: { display: false } },
+      y: { ticks: { color: css("--muted") }, grid: { color: css("--line") } },
+    },
+  };
+}
+
+function bandsFor(i0, i1) {
+  const lastDate = store.dates[store.dates.length - 1];
+  const out = [];
+  store.data.major_cycles.forEach((c) => {
+    const endDate = c.status === "ongoing" ? lastDate : c.end_date;
+    const a = Math.max(lowerBound(c.start_date), i0);
+    const b = Math.min(upperIndex(endDate), i1);
+    if (a < b) out.push({ type: c.cycle_type, from: a - i0, to: b - i0 });
+  });
+  return out;
+}
+
+function renderPrice(i0, i1) {
+  const labels = store.dates.slice(i0, i1 + 1);
+  const values = store.close.slice(i0, i1 + 1);
+  if (!store.priceChart) {
+    const options = baseOptions();
+    options.plugins.tooltip = { callbacks: { label: (item) => money(item.parsed.y) + " USD" } };
+    store.priceChart = new Chart($("priceChart"), {
+      type: "line",
+      data: { labels, datasets: [{ data: values, borderColor: css("--accent"), borderWidth: 1.6, tension: 0 }] },
+      options,
+      plugins: [shadePlugin],
+    });
+  }
+  const chart = store.priceChart;
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = values;
+  chart.options.scales.y.type = $("logScale").checked ? "logarithmic" : "linear";
+  chart.$bands = $("shade").checked ? bandsFor(i0, i1) : [];
+  chart.resize();
+  chart.update();
+}
+
+function renderDrawdown(i0, i1, drawdown) {
+  const labels = store.dates.slice(i0, i1 + 1);
+  if (!store.drawdownChart) {
+    const options = baseOptions();
+    options.plugins.tooltip = { callbacks: { label: (item) => item.parsed.y.toFixed(1) + "%" } };
+    store.drawdownChart = new Chart($("drawdownChart"), {
+      type: "line",
+      data: { labels, datasets: [{ data: drawdown, borderColor: css("--down"), backgroundColor: "rgba(214,69,69,0.3)", borderWidth: 1.2, fill: true, tension: 0 }] },
+      options,
+    });
+  }
+  const chart = store.drawdownChart;
+  chart.data.labels = labels;
+  chart.data.datasets[0].data = drawdown;
+  chart.resize();
+  chart.update();
+}
+
+function renderCycles(start, end) {
+  const all = store.data[$("cycleSize").value].filter((c) => c.start_date <= end && c.end_date >= start);
+  const bulls = all.filter((c) => c.cycle_type === "bull");
+  const bears = all.filter((c) => c.cycle_type === "bear");
+  const avg = (list, key) => (list.length ? list.reduce((s, c) => s + c[key], 0) / list.length : 0);
+  $("cycleMetrics").innerHTML =
+    metricCard("Bull periods", bulls.length) +
+    metricCard("Bear periods", bears.length) +
+    metricCard("Average bull length", Math.round(avg(bulls, "days")) + " days") +
+    metricCard("Average bear length", Math.round(avg(bears, "days")) + " days") +
+    metricCard("Average bull gain", pct(avg(bulls, "change_pct"), 0)) +
+    metricCard("Average bear fall", pct(avg(bears, "change_pct"), 0));
+  const kind = $("cycleType").value;
+  const rows = kind === "all" ? all : all.filter((c) => c.cycle_type === kind);
+  $("cycleTable").innerHTML = table(
+    [
+      { key: "cycle_type", label: "Type" },
+      { key: "start_date", label: "Start" },
+      { key: "end_date", label: "End" },
+      { key: "days", label: "Days" },
+      { key: "start_price", label: "Start price", fmt: money },
+      { key: "end_price", label: "End price", fmt: money },
+      { key: "change_pct", label: "Change", fmt: (n) => pct(n), tone: true },
+      { key: "status", label: "Status" },
+    ],
+    rows
+  );
+}
+
+function renderSpikes(i0, i1) {
+  const rows = [];
+  for (let i = Math.max(i0, 1); i <= i1; i++) rows.push({ date: store.dates[i], close: store.close[i], change: store.change[i] });
+  const limit = Number($("limit").value);
+  const topN = Number($("topN").value);
+  $("spikeMetrics").innerHTML =
+    metricCard(`Days up more than ${limit}%`, rows.filter((r) => r.change > limit).length) +
+    metricCard(`Days down more than ${limit}%`, rows.filter((r) => r.change < -limit).length);
+  const columns = [
+    { key: "date", label: "Date" },
+    { key: "close", label: "Close", fmt: money },
+    { key: "change", label: "One day change", fmt: (n) => pct(n, 2), tone: true },
+  ];
+  $("jumpTable").innerHTML = table(columns, [...rows].sort((a, b) => b.change - a.change).slice(0, topN));
+  $("fallTable").innerHTML = table(columns, [...rows].sort((a, b) => a.change - b.change).slice(0, topN));
+}
+
+function renderHalvings() {
+  $("halvingTable").innerHTML = table(
+    [
+      { key: "halving_number", label: "Halving" },
+      { key: "halving_date", label: "Date" },
+      { key: "price_on_halving", label: "Price that day", fmt: money },
+      { key: "change_pct_30d", label: "After 30 days", fmt: (n) => pct(n), tone: true },
+      { key: "change_pct_90d", label: "After 90 days", fmt: (n) => pct(n), tone: true },
+      { key: "change_pct_180d", label: "After 180 days", fmt: (n) => pct(n), tone: true },
+      { key: "change_pct_365d", label: "After 365 days", fmt: (n) => pct(n), tone: true },
+      { key: "peak_date", label: "Top date" },
+      { key: "peak_price", label: "Top price", fmt: money },
+      { key: "days_to_peak", label: "Days to top" },
+      { key: "gain_to_peak_pct", label: "Gain to top", fmt: (n) => pct(n), tone: true },
+    ],
+    store.data.halving_performance
+  );
+}
+
+function render() {
+  const [start, end] = currentRange();
+  const i0 = lowerBound(start);
+  const i1 = upperIndex(end);
+  if (start > end || i1 - i0 < 1) {
+    $("metrics").innerHTML = metricCard("Period", "Not enough data");
+    return;
+  }
+  const first = store.close[i0];
+  const last = store.close[i1];
+  let peak = -Infinity;
+  let high = -Infinity;
+  let low = Infinity;
+  let deepest = 0;
+  const drawdown = [];
+  for (let i = i0; i <= i1; i++) {
+    const c = store.close[i];
+    if (c > peak) peak = c;
+    if (c > high) high = c;
+    if (c < low) low = c;
+    const dd = (c / peak - 1) * 100;
+    if (dd < deepest) deepest = dd;
+    drawdown.push(Number(dd.toFixed(2)));
+  }
+  const change = (last / first - 1) * 100;
+  $("metrics").innerHTML =
+    metricCard("Start price", money(first), store.dates[i0]) +
+    metricCard("End price", money(last), pct(change), tone(change)) +
+    metricCard("Days", (i1 - i0 + 1).toLocaleString("en-US")) +
+    metricCard("Highest close", money(high)) +
+    metricCard("Lowest close", money(low)) +
+    metricCard("Deepest fall from top", pct(deepest), "", "down");
+  if (store.tab === "price") renderPrice(i0, i1);
+  if (store.tab === "cycles") renderCycles(store.dates[i0], store.dates[i1]);
+  if (store.tab === "spikes") renderSpikes(i0, i1);
+  if (store.tab === "drawdown") renderDrawdown(i0, i1, drawdown);
+  if (store.tab === "halvings") renderHalvings();
+}
+
+function start(data) {
+  store.data = data;
+  const closeAt = data.price_columns.indexOf("close");
+  const dateAt = data.price_columns.indexOf("date");
+  data.prices.forEach((row, i) => {
+    store.dates.push(row[dateAt]);
+    store.close.push(row[closeAt]);
+    store.change.push(i === 0 ? 0 : (row[closeAt] / data.prices[i - 1][closeAt] - 1) * 100);
+  });
+  const first = store.dates[0];
+  const last = store.dates[store.dates.length - 1];
+  $("updated").textContent = `Data from ${first} to ${last}`;
+  ["from", "to"].forEach((id) => {
+    $(id).min = first;
+    $(id).max = last;
+  });
+  $("from").value = first;
+  $("to").value = last;
+
+  $("period").addEventListener("change", () => {
+    $("customRow").classList.toggle("hidden", $("period").value !== "custom");
+    render();
+  });
+  ["from", "to", "logScale", "shade", "cycleSize", "cycleType", "topN", "limit"].forEach((id) => $(id).addEventListener("change", render));
+  $("tabs").addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    store.tab = button.dataset.tab;
+    document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b === button));
+    ["price", "cycles", "spikes", "drawdown", "halvings"].forEach((name) => $("tab-" + name).classList.toggle("hidden", name !== store.tab));
+    render();
+  });
+  render();
+}
+
+fetch("data/btc.json", { cache: "no-cache" })
+  .then((response) => response.json())
+  .then(start, () => {
+    $("updated").textContent = "Could not load the data file";
+  });
+</script>
+<script src="more.js"></script></body>
+</html>
